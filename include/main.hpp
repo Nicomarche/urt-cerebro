@@ -42,6 +42,8 @@
 #include <periodics/instantconsumption.hpp>
 /* Header file for the total voltage measurement functionality */
 #include <periodics/totalvoltage.hpp>
+/* Header file for the hall odometer functionality */
+#include <periodics/hallspeed.hpp>
 /* Header file for the klmanager functionality */
 #include <brain/klmanager.hpp>
 /* Header file for the resourceMonitor functionality */

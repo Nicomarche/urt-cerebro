@@ -81,11 +81,11 @@ namespace brain{
         char buffer[100];
         switch(m_state)
         {
-            // speed state - control the dc motor rotation speed and the steering angle. 
+            // speed state - control the dc motor rotation speed and the steering angle.
+            // Note: outgoing @speed:...;; channel is now owned by periodics::CHallspeed
+            // (measured speed from the Hall odometer), so no echo of the setpoint here.
             case 1:
                 m_speedingControl.setSpeed(m_speed); // Set the reference speed
-                snprintf(buffer, sizeof(buffer), "@speed:%d;;\r\n", m_speed);
-                m_serialPort.write(buffer, strlen(buffer));
                 m_state = 0;
                 break;
 
