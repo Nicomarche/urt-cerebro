@@ -15,9 +15,10 @@
 #define HALL_WHEEL_DIAM_MM  65     // wheel diameter in mm
 
 // Schmitt-style thresholds for read_u16 (0..65535) coming from the A49E.
-// Center of the analog idle level is around 32768; adjust against scope readings.
-#define HALL_THRESH_HIGH    40000
-#define HALL_THRESH_LOW     25000
+// Measured on this unit: ~1.6V idle (≈31774) and ~2.6V with magnet (≈51632) at VREF=3.3V.
+// Thresholds sit at ~2.3V high / ~1.9V low to give margin on both sides plus hysteresis.
+#define HALL_THRESH_HIGH    46000
+#define HALL_THRESH_LOW     38000
 
 // If no pulse arrives within this window, force published speed to 0.
 #define HALL_TIMEOUT_MS     300

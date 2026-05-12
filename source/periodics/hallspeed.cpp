@@ -1,6 +1,5 @@
 #include <periodics/hallspeed.hpp>
 #include <brain/globalsv.hpp>
-#include <cmath>
 
 #define _32_chars 32
 
@@ -65,7 +64,7 @@ namespace periodics
         int speed_mm_s = 0;
         if (m_msSinceLastPulse < HALL_TIMEOUT_MS && m_periodMs > 0) {
             const float dist_per_pulse_mm =
-                (float)M_PI * (float)HALL_WHEEL_DIAM_MM / (float)HALL_PULSES_PER_REV;
+                3.14159265f * (float)HALL_WHEEL_DIAM_MM / (float)HALL_PULSES_PER_REV;
             speed_mm_s = (int)((m_pulsesAccum * dist_per_pulse_mm * 1000.0f) / (float)m_periodMs);
         }
         m_pulsesAccum = 0;
