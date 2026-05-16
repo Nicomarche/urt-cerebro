@@ -76,8 +76,9 @@ periodics::CPowermanager g_powermanager(g_baseTick * 100, g_klmanager, g_rpi, g_
 brain::CBatterymanager g_batteryManager(dummy_value);
 
 /* USER NEW COMPONENT BEGIN */
-// Hall A49E odometer on A1, publishing @speed:<mm/s>;; at 50 Hz
-periodics::CHallspeed g_hallspeed(g_baseTick * 20, A1, g_rpi);
+// Hall A49E odometer on A1: samples at 1 kHz so brief magnet passes are
+// caught, publishes @speed:<mm/s>;; every HALL_PUBLISH_EVERY_TICKS ticks (50 Hz).
+periodics::CHallspeed g_hallspeed(g_baseTick * 1, A1, g_rpi);
 /* USER NEW COMPONENT END */
 
 // Map for redirecting messages with the key and the callback functions. If the message key equals to one of the enumerated keys, than it will be applied the paired callback function.
@@ -96,6 +97,7 @@ drivers::CSerialMonitor::CSerialSubscriberMap g_serialMonitorSubscribers = {
     {"batteryCapacity",mbed::callback(&g_batteryManager,    &brain::CBatterymanager::serialCallbackBATTERYCommand)},
     {"resourceMonitor",mbed::callback(&g_resourceMonitor,   &periodics::CResourcemonitor::serialCallbackRESMONCommand)},
     {"hallspeed",      mbed::callback(&g_hallspeed,         &periodics::CHallspeed::serialCallbackHALLSPEEDCommand)},
+    {"odoreset",       mbed::callback(&g_hallspeed,         &periodics::CHallspeed::serialCallbackODORESETCommand)},
 };
 
 // Create the serial monitor object, which decodes, redirects the messages and transmits the responses.

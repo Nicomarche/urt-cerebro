@@ -15,6 +15,7 @@ Controles teclado:
   espacio frenar (speed=0, brake)
   x       centrar direccion (steer=0)
   r       resetear todo (speed=0, steer=0)
+  o       resetear contador de odometria
   q       salir (apaga kl)
 """
 
@@ -22,6 +23,7 @@ import argparse
 import re
 import sys
 import termios
+import threading
 import time
 import tty
 from contextlib import contextmanager
@@ -56,6 +58,57 @@ def send(ser, key, value):
     msg = f"#{key}:{value};;\r\n".encode()
     ser.write(msg)
     print(f"  -> {msg.decode().strip()}")
+
+
+def reader_loop(ser, stop_event):
+    """Hilo de fondo: imprime @speed + @hallraw cada ~250 ms y el resto tal cual."""
+    print("[reader] iniciado", flush=True)
+    buf = b""
+    latest_speed = None
+    latest_odo = None
+    latest_hallraw = None
+    last_print = 0.0
+    total_bytes = 0
+    last_diag = time.time()
+    while not stop_event.is_set():
+        try:
+            chunk = ser.read(4096)
+        except Exception as e:
+            print(f"[reader] excepcion en read: {e!r}", flush=True)
+            break
+        if chunk:
+            total_bytes += len(chunk)
+            buf += chunk
+            while b"\n" in buf:
+                line_bytes, _, buf = buf.partition(b"\n")
+                line = line_bytes.decode(errors="ignore").strip()
+                if not line:
+                    continue
+                if line.startswith("@speed:"):
+                    try:
+                        latest_speed = int(line.split(":", 1)[1].split(";", 1)[0])
+                    except Exception:
+                        pass
+                elif line.startswith("@odo:"):
+                    try:
+                        latest_odo = int(line.split(":", 1)[1].split(";", 1)[0])
+                    except Exception:
+                        pass
+                elif line.startswith("@hallraw:"):
+                    latest_hallraw = line.split(":", 1)[1].rstrip(";")
+                else:
+                    print(f"  <- {line}", flush=True)
+        now = time.time()
+        if latest_speed is not None and now - last_print >= 0.25:
+            odo_str = f"  odo={latest_odo}mm" if latest_odo is not None else ""
+            extra = f"  raw[min;max;pulses]={latest_hallraw}" if latest_hallraw else ""
+            print(f"  <- @speed: {latest_speed} mm/s{odo_str}{extra}", flush=True)
+            last_print = now
+        if now - last_diag >= 2.0:
+            print(f"[reader] diag: {total_bytes} bytes leidos en ult. 2s, buf={len(buf)}B, latest_speed={latest_speed}", flush=True)
+            total_bytes = 0
+            last_diag = now
+    print("[reader] terminado", flush=True)
 
 
 @contextmanager
@@ -139,6 +192,10 @@ def main():
     print(__doc__)
     print(f"\nEstado inicial: speed={speed}  steer={steer}\n")
 
+    stop_event = threading.Event()
+    reader = threading.Thread(target=reader_loop, args=(ser, stop_event), daemon=True)
+    reader.start()
+
     try:
         with raw_terminal():
             while True:
@@ -168,17 +225,11 @@ def main():
                     steer = 0
                     send(ser, "speed", 0)
                     send(ser, "steer", 0)
-
-                # eco de respuestas que mande la placa
-                if ser.in_waiting:
-                    try:
-                        data = ser.read(ser.in_waiting).decode(errors="ignore")
-                        for line in data.splitlines():
-                            if line.strip():
-                                print(f"  <- {line.strip()}")
-                    except Exception:
-                        pass
+                elif ch == "o":
+                    send(ser, "odoreset", 1)
     finally:
+        stop_event.set()
+        reader.join(timeout=0.5)
         print("\nApagando motores (speed=0, steer=0, kl:0)...")
         try:
             send(ser, "speed", 0)

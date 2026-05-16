@@ -1,0 +1,257 @@
+================================================================
+PROTOCOLO SERIAL NUCLEO <-> RASPBERRY PI (proyecto con odometro)
+================================================================
+
+Linea       : 115200 baud, 8N1, sin handshake
+Terminacion : \r\n (CR+LF) al final de cada trama
+Pi -> Nucleo: #<key>:<payload>;;\r\n   (comandos)
+Nucleo -> Pi: @<key>:<payload>;;\r\n   (canales / acks)
+Puerto Pi   : /dev/ttyACM0
+Puerto macOS: /dev/cu.usbmodemXXXX
+
+
+================================================================
+1) COMANDOS QUE LA NUCLEO CONSUME (Pi -> Nucleo)
+================================================================
+Definidos en el subscriber map de source/main.cpp.
+Cada comando responde con @<key>:<ack>;; cuando el callback devuelve
+algo en el buffer de respuesta.
+
+----------------------------------------------------------------
+#kl:<0|15|30>;;
+  Modo de encendido. 0=apagado, 15=idle (telemetria on, motores off),
+  30=drive (motores habilitados).
+  Pre-req: ninguno.
+  Respuesta: @kl:<modo>;;
+
+----------------------------------------------------------------
+#speed:<int>;;
+  Setpoint de velocidad. Con PID = mm/s, sin PID = % duty cycle.
+  Rango efectivo con la tabla actual: -500..500.
+  Pre-req: kl=30.
+  Respuesta: ninguna directa (la maquina de estado aplica el valor).
+
+----------------------------------------------------------------
+#steer:<int>;;
+  Setpoint de direccion. Unidades: grados x 10 (ej. 250 = +25 deg).
+  Negativo=izquierda, positivo=derecha. Rango -250..250.
+  Pre-req: kl=30.
+  Respuesta: @steer:<int>;;
+
+----------------------------------------------------------------
+#brake:<int>;;
+  Freno con direccion dada. Mismo formato de angulo que #steer.
+  Pre-req: kl=30.
+  Respuesta: @brake:1;;
+
+----------------------------------------------------------------
+#vcd:<speed>;<steer>;<duration_ds>;;
+  Drive por duracion fija. duration_ds = decimas de segundo.
+  Pre-req: kl=30.
+  Respuesta: <speed>;<steer>;<duration_ds> al recibir.
+  Al terminar: emite @vcd:0;0;0;;
+
+----------------------------------------------------------------
+#vcdCalib:<...>;;
+  Variante de #vcd para calibracion. Al terminar emite @vcdCalib:0;0;;
+
+----------------------------------------------------------------
+#alive:<int>;;
+  Watchdog ping. Resetea el timer de alive.
+  Respuesta: @alive:1;;
+
+----------------------------------------------------------------
+#imu:<0|1>;;
+  Habilita (1) / deshabilita (0) la publicacion periodica de @imu.
+  Respuesta: @imu:1;;
+
+----------------------------------------------------------------
+#battery:<0|1>;;
+  Habilita/deshabilita @battery.
+  Respuesta: @battery:1;;
+
+----------------------------------------------------------------
+#instant:<0|1>;;
+  Habilita/deshabilita @instant (consumo instantaneo).
+  Respuesta: @instant:1;;
+
+----------------------------------------------------------------
+#resourceMonitor:<0|1>;;
+  Habilita/deshabilita @resourceMonitor (uso heap/stack).
+  Respuesta: @resourceMonitor:1;;
+
+----------------------------------------------------------------
+#hallspeed:<0|1>;;
+  Habilita/deshabilita la publicacion de @speed y @odo.
+  Pre-req: kl=15 o kl=30.
+  Por defecto arranca habilitado en boot, no hace falta mandarlo
+  salvo que se haya desactivado antes.
+  Respuesta: @hallspeed:1;;
+
+----------------------------------------------------------------
+#odoreset:<int>;;      [NUEVO en este fork]
+  Resetea el contador @odo a 0. El valor del payload se ignora,
+  comunmente se manda #odoreset:1;;
+  Pre-req: ninguno.
+  Respuesta: @odoreset:1;;
+
+----------------------------------------------------------------
+#batteryCapacity:<int>;;
+  Configura capacidad de bateria en mAh.
+  Respuesta: @batteryCapacity:<int>;;
+
+----------------------------------------------------------------
+#steerLimits:<int>;;
+  Pide los limites configurados de direccion (request flag).
+  Respuesta: @steerLimits:<low>;<high>;;
+
+
+================================================================
+2) CANALES QUE LA NUCLEO EMITE (Nucleo -> Pi)
+================================================================
+
+----------------------------------------------------------------
+@speed:<mm/s>;;            [50 Hz, mientras hallspeed=1]
+  Velocidad longitudinal MEDIDA del odometro Hall en mm/s.
+  Sin signo (el Hall no distingue direccion).
+  Calculo por periodo entre pulsos + promedio movil de los ultimos 4.
+  En este fork: ya NO es el eco del setpoint, es la medicion real.
+
+----------------------------------------------------------------
+@odo:<mm>;;                [50 Hz, mientras hallspeed=1] [NUEVO]
+  Distancia acumulada desde el ultimo #odoreset, en mm (uint32).
+  Resolucion fisica: 1 pulso = pi * 65 mm = 204.2 mm.
+  Sin drift (calculado como pulseCount * dist_por_pulso, no acumulado).
+
+----------------------------------------------------------------
+@steer:<int>;;             [evento, al aplicar setpoint]
+  Eco del angulo aplicado en grados x 10.
+
+----------------------------------------------------------------
+@brake:1;;                 [evento, al frenar]
+
+----------------------------------------------------------------
+@imu:<roll>;<pitch>;<yaw>;<accx>;<accy>;<accz>;;
+  Cadencia: ~150 Hz si esta habilitado.
+  6 floats con 3 decimales (orientacion + aceleracion).
+  Fuente: BNO055 via I2C.
+
+----------------------------------------------------------------
+@battery:<int>;;           [~3 Hz si esta habilitado]
+  Voltaje total en mV. ADC en A4.
+
+----------------------------------------------------------------
+@instant:<int>;;           [~1 Hz si esta habilitado]
+  Consumo instantaneo en mA. ADC en A2.
+
+----------------------------------------------------------------
+@resourceMonitor:Heap (X.YY);Stack (X.YY);;
+  Uso de heap y stack en % (parte entera y dos decimales).
+  Cadencia: ~0.2 Hz.
+
+----------------------------------------------------------------
+@warning:<h>:<m>:<s>;;
+  Cuenta regresiva HH:MM:SS antes de apagado por bateria baja.
+
+----------------------------------------------------------------
+@vcd:0;0;0;;               [evento, al terminar #vcd]
+@vcdCalib:0;0;;            [evento, al terminar #vcdCalib]
+
+----------------------------------------------------------------
+@shutdown:ack;;            [evento, al iniciar apagado]
+
+----------------------------------------------------------------
+Acks de comandos:
+  @kl:<int>;;
+  @alive:1;;
+  @hallspeed:<int>;;
+  @odoreset:1;;            [NUEVO]
+  @steerLimits:<low>;<high>;;
+  @imu / @battery / @instant / @resourceMonitor / @batteryCapacity
+    (cada uno responde "1" al recibir su comando)
+
+
+================================================================
+3) QUE CONSUME EL BRAIN HOY
+================================================================
+(threadRead.py - Brain/src/hardware/serialhandler/threads/threadRead.py)
+
+Maneja:  @imu, @brake, @speed, @steer, @vcdCalib, @alive,
+         @steerLimits, @instant, @battery, @resourceMonitor,
+         @warning, @shutdown.
+
+NO maneja todavia:  @odo (lo ignora silenciosamente)
+
+Para agregar el handler de odometro en Brain:
+
+  elif action == "odo":
+      distance_mm = int(value.split(";")[0])
+      self.distanceSender.send(distance_mm)
+
+Y declarar el sender en _init_senders().
+
+
+================================================================
+4) QUE ENVIA EL BRAIN HOY
+================================================================
+(threadWrite.py)
+
+Envia:  #kl, #speed, #steer, #brake, #alive, #steerLimits,
+        #vcd, #vcdCalib, #batteryCapacity, #instant, #battery,
+        #resourceMonitor, #imu.
+
+NO envia todavia:  #hallspeed, #odoreset.
+
+Para resetear el odometro desde Brain:
+  queueList["SerialWrite"].send("#odoreset:1;;\r\n")
+
+
+================================================================
+5) SECUENCIA TIPICA DE USO
+================================================================
+
+Pi  -> Nucleo:  #kl:30;;                      (encender drive)
+Nucleo -> Pi :  @kl:30;;
+Nucleo -> Pi :  @speed:0;;                    (continuo 50 Hz)
+Nucleo -> Pi :  @odo:0;;                      (continuo 50 Hz)
+Nucleo -> Pi :  @imu:...;;                    (continuo si imu on)
+
+Pi  -> Nucleo:  #odoreset:1;;                 (resetear distancia)
+Nucleo -> Pi :  @odoreset:1;;
+
+Pi  -> Nucleo:  #steer:0;;                    (recta)
+Pi  -> Nucleo:  #speed:300;;                  (avanzar a 300 mm/s)
+
+Nucleo -> Pi :  @speed:215;;  @speed:298;; ...
+Nucleo -> Pi :  @odo:200;;    @odo:404;; ...
+
+Pi  -> Nucleo:  #speed:0;;                    (parar)
+Pi  -> Nucleo:  #kl:0;;                       (apagar)
+
+
+================================================================
+6) NOTAS IMPORTANTES
+================================================================
+
+- @speed pasa a ser MEDIDO por el Hall, no eco del setpoint.
+  El receptor stock del Brain lo consume igual, pero el valor
+  representa otra cosa (velocidad real, no comando).
+
+- #odoreset y @odo solo existen en este fork; el firmware stock
+  BFMC no los implementa.
+
+- Calibracion del Hall:
+    HALL_WHEEL_DIAM_MM    = 65    (diametro de rueda en mm)
+    HALL_PULSES_PER_REV   = 1     (cantidad de imanes por rueda)
+    1 pulso = pi * 65 / 1 = 204.2 mm
+  Editables en include/periodics/hallspeed.hpp.
+
+- Detector Hall:
+    HALL_LOW_THRESHOLD = 28000   (~1.41 V; gatilla el conteo)
+    HALL_LOW_REARM     = 30000   (~1.51 V; permite contar el siguiente)
+  Solo se detecta la mitad baja del pulso bipolar (~1 V) para
+  evitar doble conteo en pasadas lentas del iman.
+
+- El receptor stock del Brain ignora acciones desconocidas
+  silenciosamente (no rompe), por lo que un Brain viejo conectado
+  a este firmware funciona; simplemente no usa @odo.
