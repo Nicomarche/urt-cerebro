@@ -76,16 +76,18 @@ namespace drivers
             /* Destructor */
             ~CSteeringMotor();
             /* Set angle */
-            void setAngle(int f_angle); 
+            void setAngle(int f_angle);
             /* Check if angle in range */
             int inRange(int f_angle);
             int get_upper_limit();
             int get_lower_limit();
+            /* Debug: send raw PWM pulsewidth in microseconds (1000..2000), bypasses the angle table */
+            void serialCallbackSTEERPWMCommand(char const * message, char * response);
         private:
             /** @brief PWM output pin */
             PwmOut m_pwm_pin;
-            /** @brief 0 default */
-            int zero_default = 1500; //0.075(7.5% duty cycle) * 20000µs(ms_period)
+            /** @brief 0 default — measured center where wheels run straight on this car */
+            int zero_default = 1075;
             /** @brief ms_period */
             int8_t ms_period = 20; // 20000µs
             
@@ -100,16 +102,21 @@ namespace drivers
             /* interpolate the pwm value and the zero default based on the steering value */
             int16_t interpolate(int steering, const int steeringValueP[], const int steeringValueN[], const int pwmValuesP[], const int pwmValuesN[], int size);
 
-            // Predefined values for steering reference and interpolation
+            // Predefined values for steering reference and interpolation.
+            // Calibrated on this car (single magnet, asymmetric servo travel):
+            //   #steerpwm crudo: centro=1075, tope-derecha=1650, tope-izquierda=725.
+            //   Travel right 575µs, left 350µs. Symmetric usable = min(575,350)=350µs
+            //   so #steer:±200 maps to ±350µs around 1075. The extra 225µs of right
+            //   travel is left unused to keep left/right symmetric for the controller.
             const int steeringValueP[3] = {0, 150, 200};
             const int steeringValueN[3] = {0, -150, -200};
 
             const int pwmValuesP[3] = {
-                1500, 1801, 1914
+                1075, 1338, 1425
             };
 
             const int pwmValuesN[3] = {
-                1500, 1285, 1154
+                1075, 812, 725
             };
 
     }; // class ISteeringCommand

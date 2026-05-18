@@ -139,8 +139,32 @@ namespace drivers{
         }
 
         m_pwm_pin.pulsewidth_us(pwm_value);
-        
+
     };
+
+    /** @brief  Debug raw PWM control. Sends an arbitrary pulsewidth in µs to the
+     *  servo, bypassing the angle interpolation table. Use to find the actual
+     *  mechanical limits of the servo and re-calibrate the table.
+     *  Requires kl=30 for safety. Clamped to [500, 2500] µs (standard extended
+     *  hobby-servo range — the mechanical stop will hit well before these).
+     */
+    void CSteeringMotor::serialCallbackSTEERPWMCommand(char const * a, char * b)
+    {
+        int us = 0;
+        if (sscanf(a, "%d", &us) != 1) {
+            sprintf(b, "syntax error");
+            return;
+        }
+        if (uint8_globalsV_value_of_kl != 30) {
+            sprintf(b, "kl 30 required");
+            return;
+        }
+        if (us < 500)  us = 500;
+        if (us > 2500) us = 2500;
+        m_pwm_pin.pulsewidth_us(us);
+        pwm_value = us;
+        sprintf(b, "%d", us);
+    }
 
     /** @brief  It converts angle degree to duty cycle for pwm signal. 
      * 

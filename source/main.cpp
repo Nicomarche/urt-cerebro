@@ -98,6 +98,7 @@ drivers::CSerialMonitor::CSerialSubscriberMap g_serialMonitorSubscribers = {
     {"resourceMonitor",mbed::callback(&g_resourceMonitor,   &periodics::CResourcemonitor::serialCallbackRESMONCommand)},
     {"hallspeed",      mbed::callback(&g_hallspeed,         &periodics::CHallspeed::serialCallbackHALLSPEEDCommand)},
     {"odoreset",       mbed::callback(&g_hallspeed,         &periodics::CHallspeed::serialCallbackODORESETCommand)},
+    {"steerpwm",       mbed::callback(&g_steeringDriver,    &drivers::CSteeringMotor::serialCallbackSTEERPWMCommand)},
 };
 
 // Create the serial monitor object, which decodes, redirects the messages and transmits the responses.

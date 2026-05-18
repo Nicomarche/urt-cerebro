@@ -16,6 +16,9 @@ Controles teclado:
   x       centrar direccion (steer=0)
   r       resetear todo (speed=0, steer=0)
   o       resetear contador de odometria
+  j / k   debug calib servo: PWM crudo -25 / +25 us
+  , / .   debug calib servo: PWM crudo -5 / +5 us (fino)
+  5       debug calib servo: PWM crudo = 1500 us (centro)
   q       salir (apaga kl)
 """
 
@@ -31,8 +34,13 @@ from contextlib import contextmanager
 try:
     import serial
     from serial.tools import list_ports
-except ImportError:
-    sys.exit("Falta pyserial. Instalalo con: pip install pyserial")
+except ImportError as e:
+    print(f"[debug] python ejecutable: {sys.executable}")
+    print(f"[debug] sys.path:")
+    for p in sys.path:
+        print(f"    {p}")
+    print(f"[debug] ImportError: {e!r}")
+    sys.exit("Falta pyserial. Instalalo con: " + sys.executable + " -m pip install pyserial")
 
 
 BAUDRATE = 115200
@@ -174,6 +182,7 @@ def main():
 
     speed = 0
     steer = 0
+    pwm_us = 1500  # estado para calibracion de servo (#steerpwm)
 
     if args.demo:
         try:
@@ -227,6 +236,21 @@ def main():
                     send(ser, "steer", 0)
                 elif ch == "o":
                     send(ser, "odoreset", 1)
+                elif ch == "j":
+                    pwm_us = max(500, pwm_us - 25)
+                    send(ser, "steerpwm", pwm_us)
+                elif ch == "k":
+                    pwm_us = min(2500, pwm_us + 25)
+                    send(ser, "steerpwm", pwm_us)
+                elif ch == ",":
+                    pwm_us = max(500, pwm_us - 5)
+                    send(ser, "steerpwm", pwm_us)
+                elif ch == ".":
+                    pwm_us = min(2500, pwm_us + 5)
+                    send(ser, "steerpwm", pwm_us)
+                elif ch == "5":
+                    pwm_us = 1500
+                    send(ser, "steerpwm", pwm_us)
     finally:
         stop_event.set()
         reader.join(timeout=0.5)
